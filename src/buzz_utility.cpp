@@ -42,6 +42,7 @@ namespace buzz_utility{
 		if(users_map.size()>0) {
 			/* Reset users information */
 			buzzusers_reset();
+//			create_stig_tables();
 			/* Get user id and update user information */
 			map< int, Pos_struct >::iterator it;
 			for (it=users_map.begin(); it!=users_map.end(); ++it){
@@ -67,6 +68,8 @@ namespace buzz_utility{
 		buzzvm_pushs(VM, buzzvm_string_register(VM, "put", 1));
         buzzvm_tget(VM);*/
         buzzvm_pushs(VM, buzzvm_string_register(VM, "users", 1));
+		buzzvm_gload(VM);
+		buzzvm_pushs(VM, buzzvm_string_register(VM, "dataG", 1));
 		buzzvm_push(VM, t);
 		buzzvm_gstore(VM);
         //buzzvm_pushi(VM, 2);
@@ -123,7 +126,7 @@ namespace buzz_utility{
 		/* Save entry into data table */
 		buzzvm_push(VM, entry);
 		buzzvm_tput(VM);
-		ROS_INFO("Buzz_utility saved new user: %i (%f,%f,%f)", id, latitude, longitude, altitude);
+		//ROS_INFO("Buzz_utility saved new user: %i (%f,%f,%f)", id, latitude, longitude, altitude);
 		// forcing the new table into the stigmergy....
 		/*buzzobj_t newt = buzzvm_stack_at(VM, 0);
 		buzzvm_pushs(VM, buzzvm_string_register(VM, "vt", 1));
@@ -370,7 +373,7 @@ namespace buzz_utility{
    	return VM->state;
 	}
 
-static int create_stig_tables() {
+int create_stig_tables() {
 /*
    		// usersvstig = stigmergy.create(123)
         buzzvm_pushs(VM, buzzvm_string_register(VM, "vt", 1));
@@ -705,7 +708,7 @@ static int create_stig_tables() {
 		//buzzswarm_members_print(stdout, VM->swarmmembers, VM->robot);
 		//int SwarmSize = buzzdict_size(VM->swarmmembers)+1;
 		//fprintf(stderr, "Real Swarm Size: %i\n",SwarmSize);
-		set_robot_var(buzzdict_size(VM->swarmmembers)+1);
+		
 
 		/* Check swarm state -- Not crashing thanks to test added in check_swarm_members */
 		//int status = 1;

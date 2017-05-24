@@ -45,6 +45,9 @@ namespace rosbzz_node{
 		} else {
 			robot_id= strtol(robot_name.c_str() + 5, NULL, 10);
 		}
+		std::string  path = bzzfile_name.substr(0, bzzfile_name.find_last_of("\\/")) + "/";
+		path+="Update.log";
+		log.open(path.c_str(), std::ios_base::trunc | std::ios_base::out);
 	}
 
 	/*---------------------
@@ -57,6 +60,7 @@ namespace rosbzz_node{
 		buzz_utility::buzz_script_destroy();
  		/* Stop the robot */
    		uav_done();
+		log.close();
 	}
 
 	void roscontroller::GetRobotId()
@@ -106,29 +110,39 @@ namespace rosbzz_node{
 				if(get_update_status()){
 					set_read_update_status();
 					multi_msg=true;
+					log<<cur_pos.latitude<<","<<cur_pos.longitude<<","<<cur_pos.altitude<<","; 
+					collect_data(log);
+					map< int, buzz_utility::Pos_struct >::iterator it = neighbours_pos_map.begin();
+					log<<","<<neighbours_pos_map.size();
+					for(;it != neighbours_pos_map.end();++it){
+						log<<","<<(double)it->second.x<<","<<(double)it->second.y<<","<<(double)it->second.z;	
+					}
+					log<<std::endl;
 				}
 				/*Set ROBOTS variable for barrier in .bzz from neighbours count*/
 				//no_of_robots=get_number_of_robots();
 				get_number_of_robots();
+				buzz_utility::set_robot_var(no_of_robots);
 				//if(neighbours_pos_map.size() >0) no_of_robots =neighbours_pos_map.size()+1;
 				//buzz_utility::set_robot_var(no_of_robots);
 				/*Set no of robots for updates TODO only when not updating*/
 				//if(multi_msg)
 				updates_set_robots(no_of_robots);
+				ROS_INFO("ROBOTS: %i , acutal : %i",(int)no_of_robots,(int)buzzdict_size(buzz_utility::get_vm()->swarmmembers)+1); 
 	    			/*run once*/
 	    			ros::spinOnce();
 				/*loop rate of ros*/
-				 ros::Rate loop_rate(10);
+				ros::Rate loop_rate(BUZZRATE);
 				 loop_rate.sleep();
 				 if(fcu_timeout<=0)
 					buzzuav_closures::rc_call(mavros_msgs::CommandCode::NAV_LAND);
 				 else
-					fcu_timeout -= 1/10;
+					fcu_timeout -= 1/BUZZRATE;
  				/*sleep for the mentioned loop rate*/
     			timer_step+=1;
    				maintain_pos(timer_step);
 
-   				std::cout<< "HOME: " << home.latitude << ", " << home.longitude;
+   				//std::cout<< "HOME: " << home.latitude << ", " << home.longitude;
 			}
 			/* Destroy updater and Cleanup */
     			//update_routine(bcfname.c_str(), dbgfname.c_str(),1);
@@ -513,7 +527,7 @@ namespace rosbzz_node{
 	/Refresh neighbours Position for every ten step
 	/---------------------------------------------*/
 	void roscontroller::maintain_pos(int tim_step){
-		if(timer_step >=10){
+		if(timer_step >=BUZZRATE){
 		neighbours_pos_map.clear();
 		//raw_neighbours_pos_map.clear(); // TODO: currently not a problem, but have to clear !
 		timer_step=0;
@@ -676,20 +690,14 @@ namespace rosbzz_node{
 	}
 
 	void roscontroller::users_pos(const rosbuzz::neigh_pos data){
-		//ROS_INFO("Altitude out: %f", cur_rel_altitude);
 
-                double us[3];
                 int n = data.pos_neigh.size();
-        //	ROS_INFO("Neighbors array size: %i\n", n);
+        //	ROS_INFO("Users array size: %i\n", n);
                 if(n>0)
                 {
                         for(int it=0; it<n; ++it)
                         {
-                                us[0] = data.pos_neigh[it].latitude;
-                                us[1] = data.pos_neigh[it].longitude;
-                                us[2] = data.pos_neigh[it].altitude;
-								
-								buzz_utility::add_user(data.pos_neigh[it].position_covariance_type,data.pos_neigh[it].latitude, data.pos_neigh[it].longitude, data.pos_neigh[it].altitude);
+							buzz_utility::add_user(data.pos_neigh[it].position_covariance_type,data.pos_neigh[it].latitude, data.pos_neigh[it].longitude, data.pos_neigh[it].altitude);
                         }
 
                 }
@@ -721,8 +729,8 @@ namespace rosbzz_node{
 		moveMsg.header.stamp = ros::Time::now();
 		moveMsg.header.seq = setpoint_counter++;
 		moveMsg.header.frame_id = 1;
-		float ned_x, ned_y;
-		gps_ned_home(ned_x, ned_y);
+//		float ned_x, ned_y;
+//		gps_ned_home(ned_x, ned_y);
        //         ROS_INFO("[%i] ROSBuzz Home: %.7f, %.7f", robot_id, home[0], home[1]);
        //         ROS_INFO("[%i] ROSBuzz LocalPos: %.7f, %.7f", robot_id, local_pos[0], local_pos[1]);
                     
@@ -738,10 +746,10 @@ namespace rosbzz_node{
 		moveMsg.pose.orientation.w = 1;
 
                 // To prevent drifting from stable position.
-		if(fabs(x)>0.05 || fabs(y)>0.05) {
+		//if(fabs(x)>0.005 || fabs(y)>0.005) {
                     localsetpoint_nonraw_pub.publish(moveMsg);
-                    ROS_INFO("Sent local NON RAW position message!");
-                }
+                    //ROS_INFO("Sent local NON RAW position message!");
+        //        }
 	}
 
 	void roscontroller::SetMode(std::string mode, int delay_miliseconds){
@@ -833,7 +841,7 @@ namespace rosbzz_node{
 			gps_rb(nei_pos, cvt_neighbours_pos_payload);
 			/*Extract robot id of the neighbour*/
 	 		uint16_t* out = buzz_utility::u64_cvt_u16((uint64_t)*(message_obt+3));
-			cout << "Rel Pos of " << (int)out[1] << ": " << cvt_neighbours_pos_payload[0] << ", "<< cvt_neighbours_pos_payload[1] << ", "<< cvt_neighbours_pos_payload[2] << endl;
+			ROS_WARN("RAB of %i: %f, %f", (int)out[1], cvt_neighbours_pos_payload[0], cvt_neighbours_pos_payload[1]);
 			/*pass neighbour position to local maintaner*/
 			buzz_utility::Pos_struct n_pos(cvt_neighbours_pos_payload[0],cvt_neighbours_pos_payload[1],cvt_neighbours_pos_payload[2]);
 			/*Put RID and pos*/
@@ -917,21 +925,21 @@ namespace rosbzz_node{
 	
 	}*/
 	void roscontroller::get_number_of_robots(){
-		
+		int cur_robots=(int)buzzdict_size(buzz_utility::get_vm()->swarmmembers)+1;
 		if(no_of_robots==0){
-			no_of_robots=neighbours_pos_map.size()+1;
+			no_of_robots=cur_robots;
 						
 		}
 		else{
-			if(no_of_robots!=neighbours_pos_map.size()+1 && no_cnt==0){
+			if(no_of_robots!=cur_robots && no_cnt==0){
 				no_cnt++;
-				old_val=neighbours_pos_map.size()+1;
+				old_val=cur_robots;
 			
 			}			
-			else if(no_cnt!=0 && old_val==neighbours_pos_map.size()+1){
+			else if(no_cnt!=0 && old_val==cur_robots){
 				no_cnt++;
-				if(no_cnt>=4){
-					no_of_robots=neighbours_pos_map.size()+1;
+				if(no_cnt>=150 || cur_robots > no_of_robots){
+					no_of_robots=cur_robots;
 					no_cnt=0;
 				}
 			}
